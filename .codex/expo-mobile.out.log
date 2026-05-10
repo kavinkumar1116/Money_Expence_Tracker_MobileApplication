@@ -1,0 +1,10 @@
+
+> monthly-expense-tracker@1.0.0 start
+> expo start --lan --port 8082
+
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY DATABASE_URL POSTGRES_HOST POSTGRES_PORT POSTGRES_DATABASE POSTGRES_USER POSTGRES_PASSWORD
+Starting project at D:\Money_Expence_Tracker_MobileApplication
+Starting Metro Bundler
+Waiting on http://localhost:8082
+Logs for your project will appear below.
