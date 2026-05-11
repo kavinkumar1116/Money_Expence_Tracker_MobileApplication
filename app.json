@@ -9,6 +9,12 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 30000,
+      "url": "https://u.expo.dev/50fcdc01-635b-4d0c-8d47-7381d12cacdf"
+    },
     "ios": {
       "supportsTablet": true
     },
@@ -17,11 +23,15 @@
         "backgroundColor": "#071311"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.monthlyexpensetracker"
+      "package": "com.anonymous.monthlyexpensetracker",
+      "jsEngine": "hermes"
     },
     "extra": {
       "supabaseUrl": "${EXPO_PUBLIC_SUPABASE_URL}",
-      "supabaseAnonKey": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}"
+      "supabaseAnonKey": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
+      "eas": {
+        "projectId": "50fcdc01-635b-4d0c-8d47-7381d12cacdf"
+      }
     }
   }
 }

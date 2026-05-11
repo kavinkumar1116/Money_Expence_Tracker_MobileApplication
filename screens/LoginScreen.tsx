@@ -15,8 +15,8 @@ import { isEmail, validateRequired } from "@/utils/validation";
 type Props = NativeStackScreenProps<AuthStackParamList, "Login">;
 
 export function LoginScreen({ navigation }: Props) {
-  const [email, setEmail] = useState("demo@monthwise.app");
-  const [password, setPassword] = useState("password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const signIn = useAppStore((state) => state.signIn);
   const authLoading = useAppStore((state) => state.authLoading);

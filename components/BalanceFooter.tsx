@@ -7,10 +7,11 @@ import { currency } from "@/utils/format";
 type Props = {
   mainBalance: number;
   totalExpenses: number;
+  totalCredited: number;
   remainingBalance: number;
 };
 
-export function BalanceFooter({ mainBalance, totalExpenses, remainingBalance }: Props) {
+export function BalanceFooter({ mainBalance, totalExpenses, totalCredited, remainingBalance }: Props) {
   const insets = useSafeAreaInsets();
   const { colors } = useThemeColors();
 
@@ -40,10 +41,10 @@ export function BalanceFooter({ mainBalance, totalExpenses, remainingBalance }: 
         </View>
         <View className="flex-1 items-center">
           <Text style={{ color: colors.muted }} className="text-xs font-semibold uppercase">
-            Cridited
+            Credited
           </Text>
           <Text style={{ color: colors.primary }} numberOfLines={1} adjustsFontSizeToFit className="mt-1 text-base font-black">
-            {currency(totalExpenses)}
+            {currency(totalCredited)}
           </Text>
         </View>
         <View className="flex-1 items-end">

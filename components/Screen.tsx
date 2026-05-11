@@ -34,7 +34,7 @@ export function Screen({ children, scroll, keyboard, padded = true, contentClass
     >
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} className={className} {...props}>
         {keyboard ? (
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1">
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "padding"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20} className="flex-1">
             {content}
           </KeyboardAvoidingView>
         ) : (

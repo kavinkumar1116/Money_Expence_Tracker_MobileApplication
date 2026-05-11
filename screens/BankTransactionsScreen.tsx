@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, KeyboardAvoidingView, Platform, Text, View, TouchableOpacity } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, FlatList, KeyboardAvoidingView, Platform, Text, View, TouchableOpacity, ScrollView, Keyboard } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { CalendarDays, Check, Plus, ReceiptText, Save, TrendingDown, TrendingUp } from "lucide-react-native";
 import { BalanceFooter } from "@/components/BalanceFooter";
@@ -29,6 +29,7 @@ export function BankTransactionsScreen({ route }: Props) {
   const updateMonthBankBalance = useAppStore((state) => state.updateMonthBankBalance);
   const userId = useAppStore((state) => state.session?.user?.id ?? state.profile?.id ?? "");
   const { colors } = useThemeColors();
+  const flatListRef = useRef<FlatList>(null);
 
   const bank = useMemo(() => monthBanks.find((item) => item.id === monthBankId), [monthBanks, monthBankId]);
   const transactions = useMemo(() => allTransactions.filter((item) => item.monthBankId === monthBankId), [allTransactions, monthBankId]);
@@ -39,30 +40,44 @@ export function BankTransactionsScreen({ route }: Props) {
   const [category, setCategory] = useState("");
   const [transactionDate, setTransactionDate] = useState(new Date().toISOString().slice(0, 10));
   const [editing, setEditing] = useState<Transaction | null>(null);
-  const [selectedTab, setSelectedTab] = useState<"1" | "2">("1");
+  const [selectedTab, setSelectedTab] = useState<1 | 2>(1);
 
   const sortedTransactions = useMemo(
     () => [...transactions]
-      .filter((item) => String(item.category) === selectedTab)
+      .filter((item) => item.category === selectedTab)
       .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()),
     [transactions, selectedTab]
   );
 
+  
   const totals = useMemo(
-    () => ({
-      mainBalance: bank?.mainBalance ?? 0,
-      totalExpenses: bank?.totalTransactions ?? 0,
-      remainingBalance: bank?.currentBalance ?? 0
-    }),
-    [bank?.currentBalance, bank?.mainBalance, bank?.totalTransactions]
+    () => {
+      const expenses = transactions.filter((t) => t.category === 1).reduce((sum, t) => sum + t.amount, 0);
+      const credited = transactions.filter((t) => t.category === 2).reduce((sum, t) => sum + t.amount, 0);
+      return {
+        mainBalance: bank?.mainBalance ?? 0,
+        totalExpenses: expenses,
+        totalCredited: credited,
+        remainingBalance: bank?.currentBalance ?? 0
+      };
+    },
+    [bank?.currentBalance, bank?.mainBalance, transactions]
   );
+
 
   useEffect(() => {
     setBalanceText(String(bank?.mainBalance ?? 0));
   }, [bank?.mainBalance]);
 
-  const saveBalance = async () => {
-    await updateMonthBankBalance(monthBankId, Number(balanceText || 0));
+  const handleInputFocus = () => {
+    // Scroll to top to show form fields when keyboard opens
+    if (flatListRef.current) {
+      flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+    }
+  };
+
+  const saveBalance = async (amount: number) => {
+    await updateMonthBankBalance(monthBankId, amount);
   };
 
   const resetForm = () => {
@@ -75,6 +90,7 @@ export function BankTransactionsScreen({ route }: Props) {
 
   const handleSaveTransaction = async () => {
     const value = Number(amount);
+
     if (!Number.isFinite(value) || value <= 0) {
       Alert.alert("Invalid amount", "Enter an expense amount greater than zero.");
       return;
@@ -87,10 +103,28 @@ export function BankTransactionsScreen({ route }: Props) {
       Alert.alert("Invalid date", "Use YYYY-MM-DD format.");
       return;
     }
+    
+    const categoryNum = Number(category);
+    
     if (editing) {
-      await updateTransaction(editing.id, { amount: value, notes, category, transactionDate });
+      await updateTransaction(editing.id, { amount: value, notes, category: categoryNum, transactionDate });
+      // If updating a credited transaction, adjust mainBalance by the difference
+      if (categoryNum === 2 && editing.category === 2) {
+        const difference = value - editing.amount;
+        await saveBalance(totals.mainBalance + difference);
+      } else if (categoryNum === 2 && editing.category !== 2) {
+        // Changing from expense to credit, add the amount
+        await saveBalance(totals.mainBalance + value);
+      } else if (categoryNum !== 2 && editing.category === 2) {
+        // Changing from credit to expense, subtract the amount
+        await saveBalance(totals.mainBalance - editing.amount);
+      }
     } else {
-      await addTransaction(userId, monthBankId, { amount: value, notes, category, transactionDate });
+      await addTransaction(userId, monthBankId, { amount: value, notes, category: categoryNum, transactionDate });
+      // If adding a credited transaction, increase mainBalance
+      if (categoryNum === 2) {
+        await saveBalance(totals.mainBalance + value);
+      }
     }
     resetForm();
   };
@@ -99,26 +133,38 @@ export function BankTransactionsScreen({ route }: Props) {
     setEditing(transaction);
     setAmount(String(transaction.amount));
     setNotes(transaction.notes);
-    setCategory(transaction.category);
+    setCategory(String(transaction.category));
     setTransactionDate(transaction.transactionDate);
   };
 
   const renderItem = useCallback(
     ({ item }: { item: Transaction }) => (
-      <SwipeableRow onDelete={() => deleteTransaction(item.id)}>
+      <SwipeableRow onDelete={async () => {
+        // If deleting a credited transaction, decrease mainBalance
+        if (item.category === 2) {
+          await saveBalance(totals.mainBalance - item.amount);
+        }
+        await deleteTransaction(item.id);
+      }}>
         <TransactionItem
           transaction={item}
           onEdit={() => startEdit(item)}
           onDelete={() =>
             Alert.alert("Delete transaction", "Remove this transaction?", [
               { text: "Cancel", style: "cancel" },
-              { text: "Delete", style: "destructive", onPress: () => deleteTransaction(item.id) }
+              { text: "Delete", style: "destructive", onPress: async () => {
+                // If deleting a credited transaction, decrease mainBalance
+                if (item.category === 2) {
+                  await saveBalance(totals.mainBalance - item.amount);
+                }
+                await deleteTransaction(item.id);
+              }}
             ])
           }
         />
       </SwipeableRow>
     ),
-    [deleteTransaction]
+    [deleteTransaction, totals.mainBalance]
   );
 
   const header = (
@@ -138,15 +184,15 @@ export function BankTransactionsScreen({ route }: Props) {
         </Text>
         <View className="mt-4">
           <TextField label="Set main balance" value={balanceText} onChangeText={setBalanceText} keyboardType="numeric" />
-          <PrimaryButton title="Save Balance" icon={Save} variant="secondary" onPress={saveBalance} />
+          <PrimaryButton title="Save Balance" icon={Save} variant="secondary" onPress={() => saveBalance(0)} />
         </View>
       </GlassCard>
       <GlassCard className="mb-5 p-5">
         <Text style={{ color: colors.text }} className="mb-4 text-lg font-extrabold">
           {editing ? "Edit transaction" : "New transaction"}
         </Text>
-        <TextField label="Amount" value={amount} onChangeText={setAmount} keyboardType="numeric" />
-        <TextField label="Notes" value={notes} onChangeText={setNotes} multiline />
+        <TextField label="Amount" value={amount} onChangeText={setAmount} onFocus={handleInputFocus} keyboardType="numeric" />
+        <TextField label="Notes" value={notes} onChangeText={setNotes} onFocus={handleInputFocus} multiline />
         <Dropdown
           label="Select a category"
           value={category}
@@ -156,7 +202,7 @@ export function BankTransactionsScreen({ route }: Props) {
             { label: "Credit (+)", value: "2" },
           ]}
         />
-        <TextField label="Transaction date" icon={CalendarDays} value={transactionDate} onChangeText={setTransactionDate} placeholder="YYYY-MM-DD" />
+        <TextField label="Transaction date" icon={CalendarDays} value={transactionDate} onChangeText={setTransactionDate} onFocus={handleInputFocus} placeholder="YYYY-MM-DD" />
         <PrimaryButton title={editing ? "Update Transaction" : "Save Transaction"} icon={editing ? Check : Plus} onPress={handleSaveTransaction} />
         {editing ? (
           <View className="mt-3">
@@ -167,17 +213,17 @@ export function BankTransactionsScreen({ route }: Props) {
       <View className="mb-5">
         <View className="flex-row gap-3">
           <TouchableOpacity
-            onPress={() => setSelectedTab("1")}
+            onPress={() => setSelectedTab(1)}
             className="flex-1 flex-row items-center justify-center py-4 rounded-lg"
             style={{
-              backgroundColor: selectedTab === "1" ? "#ef4444" : "#fee2e2",
-              opacity: selectedTab === "1" ? 1 : 0.6
+              backgroundColor: selectedTab === 1 ? "#ef4444" : "#fee2e2",
+              opacity: selectedTab === 1 ? 1 : 0.6
             }}
           >
-            <TrendingDown size={18} color={selectedTab === "1" ? "#fff" : "#dc2626"} />
+            <TrendingDown size={18} color={selectedTab === 1 ? "#fff" : "#dc2626"} />
             <Text
               style={{
-                color: selectedTab === "1" ? "#fff" : "#dc2626",
+                color: selectedTab === 1 ? "#fff" : "#dc2626",
                 marginLeft: 8
               }}
               className="font-bold"
@@ -187,17 +233,17 @@ export function BankTransactionsScreen({ route }: Props) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => setSelectedTab("2")}
+            onPress={() => setSelectedTab(2)}
             className="flex-1 flex-row items-center justify-center py-4 rounded-lg"
             style={{
-              backgroundColor: selectedTab === "2" ? "#22c55e" : "#dcfce7",
-              opacity: selectedTab === "2" ? 1 : 0.6
+              backgroundColor: selectedTab === 2 ? "#22c55e" : "#dcfce7",
+              opacity: selectedTab === 2 ? 1 : 0.6
             }}
           >
-            <TrendingUp size={18} color={selectedTab === "2" ? "#fff" : "#16a34a"} />
+            <TrendingUp size={18} color={selectedTab === 2 ? "#fff" : "#16a34a"} />
             <Text
               style={{
-                color: selectedTab === "2" ? "#fff" : "#16a34a",
+                color: selectedTab === 2 ? "#fff" : "#16a34a",
                 marginLeft: 8
               }}
               className="font-bold"
@@ -212,8 +258,9 @@ export function BankTransactionsScreen({ route }: Props) {
 
   return (
     <Screen padded={false}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1 px-5 pt-5">
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "padding"} keyboardVerticalOffset={100} className="flex-1 px-5 pt-5">
         <FlatList
+          ref={flatListRef}
           data={sortedTransactions}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
@@ -224,8 +271,9 @@ export function BankTransactionsScreen({ route }: Props) {
           maxToRenderPerBatch={12}
           windowSize={9}
           removeClippedSubviews
-          contentContainerStyle={{ paddingBottom: 125, flexGrow: 1 }}
+          contentContainerStyle={{ paddingBottom: 200, flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
+          scrollEnabled
         />
       </KeyboardAvoidingView>
       <BalanceFooter {...totals} />

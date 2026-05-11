@@ -47,7 +47,7 @@ export type Transaction = {
   monthBankId: ID;
   amount: number;
   notes: string;
-  category: string;
+  category: number;
   transactionDate: string;
   createdAt: string;
   updatedAt?: string;
